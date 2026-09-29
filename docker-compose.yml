@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eve
+      POSTGRES_PASSWORD: eve
+      POSTGRES_DB: eve_diagnostics
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eve -d eve_diagnostics"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: "postgresql://eve:eve@db:5432/eve_diagnostics?schema=public"
+      JWT_SECRET: "dev-secret-change-me"
+      JWT_EXPIRES_IN: "1d"
+      PAYMENT_WEBHOOK_SECRET: "dev-webhook-secret"
+      PORT: 4000
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:

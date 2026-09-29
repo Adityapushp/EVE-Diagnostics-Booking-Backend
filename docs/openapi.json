@@ -1,0 +1,201 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "EVE Diagnostics Booking API",
+        "version": "1.0.0",
+        "description": "Diagnostic test bookings + simulated payments backend"
+    },
+    "servers": [{ "url": "/" }],
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+        }
+    },
+    "paths": {
+        "/auth/signup": {
+            "post": {
+                "summary": "Create an account",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["name", "email", "password"],
+                                "properties": {
+                                    "name": { "type": "string" },
+                                    "email": { "type": "string" },
+                                    "password": { "type": "string" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": { "201": { "description": "User created, returns JWT" } }
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "summary": "Log in",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["email", "password"],
+                                "properties": {
+                                    "email": { "type": "string" },
+                                    "password": { "type": "string" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": { "200": { "description": "Returns JWT" } }
+            }
+        },
+        "/centres": {
+            "get": { "summary": "List diagnostic centres (public)", "responses": { "200": { "description": "OK" } } },
+            "post": {
+                "summary": "Create a centre (auth required)",
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["name", "location"],
+                                "properties": {
+                                    "name": { "type": "string" },
+                                    "location": { "type": "string" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": { "201": { "description": "Created" } }
+            }
+        },
+        "/centres/{id}/tests": {
+            "post": {
+                "summary": "Add a test to a centre (auth required)",
+                "security": [{ "bearerAuth": [] }],
+                "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["name", "price"],
+                                "properties": {
+                                    "name": { "type": "string" },
+                                    "price": { "type": "number" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": { "201": { "description": "Created" } }
+            }
+        },
+        "/tests": {
+            "get": { "summary": "List diagnostic tests (public)", "responses": { "200": { "description": "OK" } } }
+        },
+        "/bookings": {
+            "post": {
+                "summary": "Book a diagnostic test (auth required)",
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["testId", "appointmentAt"],
+                                "properties": {
+                                    "testId": { "type": "string" },
+                                    "appointmentAt": { "type": "string", "format": "date-time" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": { "201": { "description": "Booking created, status PENDING" } }
+            },
+            "get": {
+                "summary": "List my bookings (auth required)",
+                "security": [{ "bearerAuth": [] }],
+                "responses": { "200": { "description": "OK" } }
+            }
+        },
+        "/bookings/{id}": {
+            "get": {
+                "summary": "Get a booking (owner only)",
+                "security": [{ "bearerAuth": [] }],
+                "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+                "responses": { "200": { "description": "OK" }, "403": { "description": "Not your booking" } }
+            }
+        },
+        "/bookings/{id}/cancel": {
+            "patch": {
+                "summary": "Cancel a booking (owner only, not if already CONFIRMED)",
+                "security": [{ "bearerAuth": [] }],
+                "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+                "responses": { "200": { "description": "OK" } }
+            }
+        },
+        "/payments": {
+            "post": {
+                "summary": "Simulate a payment for a booking (auth required)",
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["bookingId"],
+                                "properties": {
+                                    "bookingId": { "type": "string" },
+                                    "forceStatus": { "type": "string", "enum": ["SUCCESS", "FAILED"], "description": "Testing hook only" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": { "201": { "description": "Payment created and booking updated" } }
+            }
+        },
+        "/payments/webhook": {
+            "post": {
+                "summary": "Idempotent provider webhook. Requires x-webhook-secret header.",
+                "parameters": [{
+                    "name": "x-webhook-secret",
+                    "in": "header",
+                    "required": true,
+                    "schema": { "type": "string" }
+                }],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["eventId", "providerRef", "status"],
+                                "properties": {
+                                    "eventId": { "type": "string" },
+                                    "providerRef": { "type": "string" },
+                                    "status": { "type": "string", "enum": ["SUCCESS", "FAILED"] }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": { "200": { "description": "Processed or acknowledged duplicate" } }
+            }
+        }
+    }
+}

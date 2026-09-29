@@ -1,0 +1,98 @@
+// Prisma schema for the EVE Healthcare diagnostic booking backend.
+// Run `npm run prisma:migrate` after setting DATABASE_URL to apply this.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  bookings     Booking[]
+}
+
+model DiagnosticCentre {
+  id        String           @id @default(uuid())
+  name      String
+  location  String
+  createdAt DateTime         @default(now())
+  tests     DiagnosticTest[]
+  bookings  Booking[]
+}
+
+model DiagnosticTest {
+  id        String           @id @default(uuid())
+  name      String
+  price     Decimal          @db.Decimal(10, 2)
+  centre    DiagnosticCentre @relation(fields: [centreId], references: [id])
+  centreId  String
+  createdAt DateTime         @default(now())
+  bookings  Booking[]
+
+  // A given test name only needs to be unique per centre, not globally.
+  @@unique([centreId, name])
+}
+
+model Booking {
+  id            String           @id @default(uuid())
+  user          User             @relation(fields: [userId], references: [id])
+  userId        String
+  test          DiagnosticTest   @relation(fields: [testId], references: [id])
+  testId        String
+  centre        DiagnosticCentre @relation(fields: [centreId], references: [id])
+  centreId      String
+  appointmentAt DateTime
+  amount        Decimal          @db.Decimal(10, 2)
+  status        BookingStatus    @default(PENDING)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  payments      Payment[]
+}
+
+// One booking can have more than one Payment row if a payment attempt fails
+// and the user retries - we never mutate a Payment after creation, we only
+// ever append, which makes the audit trail honest and the webhook handler
+// simpler to reason about.
+model Payment {
+  id          String        @id @default(uuid())
+  booking     Booking       @relation(fields: [bookingId], references: [id])
+  bookingId   String
+  providerRef String        @unique @default(uuid())
+  status      PaymentStatus @default(PENDING)
+  amount      Decimal       @db.Decimal(10, 2)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+// Every inbound webhook call is logged here keyed by the provider's eventId.
+// The webhook handler checks this table first - if the eventId already
+// exists, it's a replay and we return 200 without touching Booking/Payment
+// state again. This is what makes POST /payments/webhook idempotent.
+model WebhookEvent {
+  id          String   @id @default(uuid())
+  eventId     String   @unique
+  payload     Json
+  receivedAt  DateTime @default(now())
+}
